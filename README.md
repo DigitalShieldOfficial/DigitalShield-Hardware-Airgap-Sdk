@@ -676,16 +676,18 @@ Integrators must at least implement:
 
 ### 15.1 Hardware Fails to Scan Hot-Side Transaction QR (Camera Resolution / QR Density)
 
-A common integration issue: **the hot wallet correctly generated the UR unsigned animated QR and protocol fields are fine, but the Digital Shield hardware camera “cannot scan” or takes a long time without completing decode**. This is often not an on-chain construction error, but a **mismatch between optical reading capability and single-frame QR density**.
+A common integration issue: **the hot wallet correctly generated the UR unsigned animated QR and protocol fields are fine, but the Digital Shield hardware camera “cannot scan” or takes a long time and still cannot enter the confirmation page**. This is often not an on-chain construction error, but a **mismatch between optical reading capability and single-frame QR density**.
 
-#### Typical Symptoms
+#### Typical Symptoms (Observable on Screen)
 
-| Stage | Device-side behavior (examples) |
+| Stage | What hot-wallet developers usually see on the device |
 | --- | --- |
+| Cannot find the code / code too dense | Stays on the scan page; progress stays at **0%** or does not advance; a code seems visible in the preview, but the transaction confirmation page is never reached |
+| Occasional unstable reads | Progress occasionally jumps then drops back, and cannot reach 100% for a long time; clearly improves after smaller fragments or a larger code area |
 | Payload-related | **BTC / LTC / DOGE `crypto-psbt` (especially multi-input, larger PSBTs)** most easily reproduce; single-frame “crowded” ETH / TRON / SOL animated codes also occasionally fail on phone high-res screens |
-| Contrast | The same device often scans **sparse** short codes normally; success rate rises clearly after larger display / smaller fragments |
+| Contrast | The same device often scans **sparse** short codes normally; success rate rises clearly after a larger display area / smaller `max_fragment_len` |
 
-Historically, when integrating with high-density animated URs shown on phone Apps such as OKX (some BTC unsigned single frames around **QR Version 12–17**), a combination of “no detection first → then ECC failure” was observed.
+When integrating with high-density animated URs shown on phone Apps such as OKX (some BTC unsigned single frames around **QR Version 12–17**), the same “scans for a long time and never reaches the confirmation page” was also observed historically.
 
 #### Cause Explanation (Combined with Hardware Capability)
 
@@ -698,8 +700,13 @@ Historically, when integrating with high-density animated URs shown on phone App
 3. **Animation refresh vs focus window**  
    If fragments refresh too fast, hardware cannot stabilize framing; too slow hurts UX but does not fix “single frame too dense” itself.
 
-4. **Distinguishing from “protocol errors”**  
-   If scanning completes stably and then CBOR parse fails, that is an **encoding field issue** (see Buffer JSON etc. above), not this section’s optical problem. This section specifically means: **cannot get past the scan stage**.
+4. **Distinguishing from protocol / encoding errors (watch on-screen dialogs)**
+
+| Type | On-screen behavior | Meaning |
+| --- | --- | --- |
+| Optical (this section) | Progress stuck, **no dialog**, or never finishes scanning | Single frame too dense / lighting / refresh; reduce fragment size first |
+| Wallet mismatch | Dialog similar to **Wallet mismatch** (same class as `Invalid signer`: the current device wallet does not match the xfp/signer in the request) | Re-import this device’s `crypto-multi-accounts`, or check the path and fingerprint |
+| Encoding field error | Progress can reach **100%** (UR fully collected), then a dialog **Invalid QR Code / invalid data format** (or a “please check input data” style prompt) | CBOR field types are wrong (for example binary encoded as `{type:"Buffer", data:[…]}`); a hot-side encoding issue, not camera density |
 
 #### Hot-Side (Third-Party Wallet) Recommended Practices
 
@@ -710,16 +717,18 @@ Historically, when integrating with high-density animated URs shown on phone App
 | Layout | QR as large and centered as possible; **avoid large center logos / stickers** covering modules |
 | Screen | Raise brightness; disable dark translucent overlays; reduce strong reflections |
 | Refresh | About **200–500 ms** per frame; same order of magnitude as device-side account export (~250 ms) |
+| Self-test (no debug cable) | On a real device: short ETH → medium PSBT → large PSBT. If progress stays at 0% / the confirmation page never opens, reduce fragment size; if “invalid data” appears after a full scan, check CBOR bytes encoding |
 
-#### Device Side (For Reference; Hot Side Need Not Change)
+#### Device Side (For Reference)
 
 - Account export animation already commonly uses smaller fragments (~**100** bytes), convenient for **phones scanning hardware**; when the hot side displays for hardware to scan, adopt a symmetric strategy.  
-- Firmware crop resolution, decode preprocessing, etc. are device capability boundaries; third-party integrators **must not assume** hardware can stably recognize exchange-style large codes on phones that are “as few frames / as dense as possible.”
+- Firmware crop resolution is a device capability boundary; third-party integrators **must not assume** hardware can stably recognize exchange-style large codes that are “as few frames / as dense as possible.”  
+- Protocol-parse / wallet-mismatch errors are shown as **on-screen dialogs**. The optical-failure stage does not pop a dialog every frame (to avoid flooding the screen); judge by scan progress and whether the confirmation page is reached.
 
 #### Summary
 
-> **When hardware fails to scan hot-side transaction QRs, first suspect “single-frame QR too dense for the camera,” not transaction fields.**  
-> Handling principle: **reduce per-frame payload → increase frame count → keep the code surface clear**, so each frame falls within the density the device camera can decode.
+> **When hardware fails to scan hot-side transaction QRs: progress stuck → first suspect single-frame density; after a full scan, “invalid data” → check hot-side CBOR encoding; “wallet mismatch” → check xfp/account.**  
+> Handling principle for optical issues: **reduce per-frame payload → increase frame count → keep the code surface clear**.
 
 ---
 
