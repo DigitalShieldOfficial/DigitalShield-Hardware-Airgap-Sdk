@@ -704,7 +704,7 @@ MyWallet&symbol=SOL&decimals=9&amount=1000000&toAddress=<base58>
 | 类型 | 屏幕表现 | 含义 |
 | --- | --- | --- |
 | 光学问题（本节） | 进度卡住、**无弹窗**或始终无法扫满 | 单帧过密 / 光照 / 刷新；先减小分片 |
-| 钱包不匹配 | 弹窗类似 **Wallet mismatch / 钱包不匹配**（与 `Invalid signer` 同类：当前设备钱包与请求中的 xfp/signer 不一致） | 重新导入本机 `crypto-multi-accounts`，或核对路径与指纹 |
+| 钱包不匹配 | 弹窗类似 **Wallet mismatch / 钱包不匹配**（与 `Invalid signer used` 同类：硬件钱包与App选取的钱包不匹配，请检查后再试） | 重新导入本机 `crypto-multi-accounts`，或核对路径与指纹 |
 | 编码字段错误 | 进度能到 **100%**（UR 已收齐），随即弹窗 **Invalid QR Code / 无效的数据格式**（或「请检查输入数据」类提示） | CBOR 字段类型不对等（例如二进制被编成 `{type:"Buffer", data:[…]}`），属热端编码问题，不是摄像头密度问题 |
 
 #### 热端（第三方钱包）建议做法
@@ -757,6 +757,15 @@ MyWallet&symbol=SOL&decimals=9&amount=1000000&toAddress=<base58>
 - [BCR-2020-006 UR Types](https://github.com/BlockchainCommons/Research/blob/master/papers/bcr-2020-006-urtypes.md)
 - [BCR-2020-007 HDKey](https://github.com/BlockchainCommons/Research/blob/master/papers/bcr-2020-007-hdkey.md)
 - [BIP-174 PSBT](https://github.com/bitcoin/bips/blob/master/bip-0174.mediawiki)
+
+### 16.3 硬件扫码错误提示释义
+
+设备扫满待签码后，若拒绝签名，屏幕可能弹出英文错误。下表便于热端联调对照（同类含义：当前硬件钱包与 App 热端导入的账户 / 指纹不一致，通常需重新扫 `crypto-multi-accounts` 导入本机账户，并核对路径中的 xfp）。
+
+| 设备提示（英文） | 相关链 | 释义 |
+| --- | --- | --- |
+| `Invalid signer used` | Solana | 硬件钱包与 App 热钱包不匹配（请求中的 signer / 账户与当前设备钱包不一致） |
+| `Invalid sign-request. Keypath source fingerprint does not match` | Ethereum（EVM） | 硬件钱包与 App 热钱包不匹配（`derivation_path` 中的 source fingerprint / xfp 与设备当前主指纹不一致） |
 
 ---
 

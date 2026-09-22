@@ -759,6 +759,15 @@ When integrating with high-density animated URs shown on phone Apps such as OKX 
 - [BCR-2020-007 HDKey](https://github.com/BlockchainCommons/Research/blob/master/papers/bcr-2020-007-hdkey.md)
 - [BIP-174 PSBT](https://github.com/bitcoin/bips/blob/master/bip-0174.mediawiki)
 
+### 16.3 Hardware Scan Error Message Reference
+
+After the device finishes scanning an unsigned QR, it may reject signing and show an English dialog. Use the table below during hot-side integration (same class of issue: the current hardware wallet does not match the account / fingerprint imported by the App; usually re-scan `crypto-multi-accounts` for this device and verify the xfp in the path).
+
+| Device message (English) | Related chain | Meaning |
+| --- | --- | --- |
+| `Invalid signer used` | Solana | Hardware wallet does not match the App hot wallet (signer / account in the request does not match the wallet currently on the device) |
+| `Invalid sign-request. Keypath source fingerprint does not match` | Ethereum (EVM) | Hardware wallet does not match the App hot wallet (`source fingerprint` / xfp in `derivation_path` does not match the device’s current master fingerprint) |
+
 ---
 
 ## Integration Checklist (Copy into Project Issue)
