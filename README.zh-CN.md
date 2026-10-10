@@ -765,7 +765,7 @@ MyWallet&symbol=SOL&decimals=9&amount=1000000&toAddress=<base58>
 | 设备提示（英文） | 相关链 | 释义 |
 | --- | --- | --- |
 | `Invalid signer used` | Solana | 硬件钱包与 App 热钱包不匹配（请求中的 signer / 账户与当前设备钱包不一致） |
-| `Invalid sign-request. Keypath source fingerprint does not match` | Ethereum（EVM） | 硬件钱包与 App 热钱包不匹配（`derivation_path` 中的 source fingerprint / xfp 与设备当前主指纹不一致） |
+| `硬件钱包与App选取的钱包不匹配，请检查后再试` | Bitcoin、Dogecoin、Litecoin、Tron | 硬件钱包与 App 热钱包不匹配 |
 
 ---
 

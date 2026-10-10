@@ -766,7 +766,7 @@ After the device finishes scanning an unsigned QR, it may reject signing and sho
 | Device message (English) | Related chain | Meaning |
 | --- | --- | --- |
 | `Invalid signer used` | Solana | Hardware wallet does not match the App hot wallet (signer / account in the request does not match the wallet currently on the device) |
-| `Invalid sign-request. Keypath source fingerprint does not match` | Ethereum (EVM) | Hardware wallet does not match the App hot wallet (`source fingerprint` / xfp in `derivation_path` does not match the device’s current master fingerprint) |
+| `The hardware wallet does not match the wallet selected in the App. Please check and try again` | Bitcoin, Dogecoin, Litecoin, TRON | Hardware wallet does not match the App hot wallet |
 
 ---
 
