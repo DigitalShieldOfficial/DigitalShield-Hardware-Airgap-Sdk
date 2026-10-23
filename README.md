@@ -592,10 +592,16 @@ Recommend splitting by module so demos can evolve into products:
 3. Transfer form → “Hardware sign” → show unsigned QR  
 4. “Scan signature result” → success page / txid  
 
-**Camera notes:**
+**Camera notes (aligned with current firmware):**
 
 - Import and signed response: hot-side camera scans the device screen.
-- Unsigned request: hot side **brightly displays** the QR; device camera scans the hot side; watch brightness, and do not add a large center logo that obscures modules.
+- Unsigned request: hot side **brightly displays** the QR; the device camera scans the hot side. Keep brightness high, and keep the code free of a large center logo.
+- The device scan window is a **360×360** center crop of the 640×480 sensor. The progress bar and percent stay **hidden** until the first fragment decodes; the prompt then changes to “Scanning, please do not move...”.
+- The device runs two animations at different speeds. Use a separate scan timeout for each:
+  - Account export (`crypto-multi-accounts`): `max_fragment_len=100`, about **250 ms/frame**. The import decoder should accept frames continuously.
+  - Signed result: default `max_fragment_len=200`, about **1000 ms/frame**, QR side about 380 px. The on-screen **Done** control stays disabled for about **2 s**. A signed PSBT is often multi-frame; keep the camera open until the fountain decoder completes.
+- Emit standard BC-UR only: `ur:<type>/<payload>` or `ur:<type>/<seq>/<payload>` (2 or 3 `/` segments). A payload containing `//` is rejected immediately as an unsupported QR.
+- Keep a single `pendingSign`. Leave the unsigned QR on screen while the device shows a dialog: after **Retry** the camera ignores frames for about **1.5 s**, then scans the same code again. If the device returns to the scan page and no signed UR arrives (user cancel or Retry), clear `pendingSign`.
 
 ---
 
@@ -666,11 +672,13 @@ Integrators must at least implement:
 
 | Symptom | Likely cause | Action |
 | --- | --- | --- |
-| Import progress stuck at 0% | Fragments too large → QR too dense; refresh too fast; poor ambient light | Confirm device firmware uses smaller `max_fragment_len`; on hot side raise exposure and hold steady |
-| Device reports unrecognized / ECC error | Hot-side unsigned QR too dense or reflective | Limited effective camera resolution + single-frame QR too dense **see [15.1](#151-hardware-fails-to-scan-hot-side-transaction-qr-camera-resolution--qr-density)** |
-| Device rejects signing | xfp or path does not match current wallet; Passphrase wallet did not export matching accounts | Re-import multi-accounts for the current wallet |
+| Import looks stuck; device progress bar never appears | No fragment decoded yet. The bar and the percent stay hidden until progress &gt; 0. Typical causes: QR too dense, refresh too fast, poor light | Device account QR is ~**250 ms/frame**, `max_fragment_len=100`. Raise exposure and hold steady. After the first fragment, the prompt becomes “Scanning, please do not move...” |
+| Device shows a dialog and never opens the confirmation page | Dialog text identifies the failure. Density, wallet mismatch, unsupported UR, and CBOR errors are different dialogs | Match the on-screen title/body in **[15.1](#151-hardware-fails-to-scan-hot-side-transaction-qr-camera-resolution--qr-density)**. Leave the unsigned QR up; after **Retry** the device ignores frames for ~**1.5 s** |
+| Device rejects signing | xfp or path does not match the wallet on the device; a Passphrase wallet was not the one exported | Re-import this device’s `crypto-multi-accounts`. Title is **Wallet mismatch** / **錢包不匹配**. Solana uses body **Invalid signer used** |
+| Hot side times out while scanning the signed QR | Scan timeout was sized for the fast account-export animation | Signed QR advances about **once per second**, fragments up to **200** bytes. Keep the camera open across frames; give PSBT a longer timeout |
 | Signed QR scanned but does not match the tx | `request_id` not checked or session overwritten | Enforce UUID check; allow only one pending at a time |
-| LTC/DOGE signing anomalies | Mistakenly using Bitcoin network parameters | Check address version / PSBT network |
+| Device is back on the scan page and no signed QR appeared | User cancelled on the confirmation page, or dismissed an error with Retry. Firmware does not emit a signed UR in these cases | Clear `pendingSign`. Keep the unsigned animation on screen if the user will retry |
+| LTC/DOGE signing anomalies | Bitcoin network parameters were used for LTC/DOGE | Check address version / PSBT network |
 | EVM broadcast fails | `chain_id` mismatches node; wrong v encoding (EIP-1559 y-parity vs Legacy) | Distinguish by `data_type` per §8.2 |
 | TRON incompatible with some exchange App codes | Counterparty may use Keystone gzip path | Self-built use `tron-sign-request`; compatibility layer separately |
 
@@ -682,8 +690,8 @@ A common integration issue: **the hot wallet correctly generated the UR unsigned
 
 | Stage | What hot-wallet developers usually see on the device |
 | --- | --- |
-| Cannot find the code / code too dense | Stays on the scan page; progress stays at **0%** or does not advance; a code seems visible in the preview, but the transaction confirmation page is never reached |
-| Occasional unstable reads | Progress occasionally jumps then drops back, and cannot reach 100% for a long time; clearly improves after smaller fragments or a larger code area |
+| Cannot find the code / code too dense | Stays on “Scan the QR Code Displayed on the App”. The progress bar stays **hidden** (it appears only after the first fragment). The confirmation page never opens |
+| Occasional unstable reads | After the bar appears, percent jumps and falls back, and stays short of 100% for a long time. Smaller fragments or a larger code area improve it. While percent &gt; 0 the prompt is “Scanning, please do not move...” |
 | Payload-related | **BTC / LTC / DOGE `crypto-psbt` (especially multi-input, larger PSBTs)** most easily reproduce; single-frame “crowded” ETH / TRON / SOL animated codes also occasionally fail on phone high-res screens |
 | Contrast | The same device often scans **sparse** short codes normally; success rate rises clearly after a larger display area / smaller `max_fragment_len` |
 
@@ -692,7 +700,7 @@ When integrating with high-density animated URs shown on phone Apps such as OKX 
 #### Cause Explanation (Combined with Hardware Capability)
 
 1. **Limited effective decode resolution of the hardware camera**  
-   Sensor capture is VGA (~640×480); at scan time a further **center crop** is fed to the decoder (firmware commonly crops to about **360×360**). If a phone fullscreen high-res unsigned QR has modules that are too dense in a single frame, pixels-per-module inside the crop are insufficient and locating/sampling fails.
+   Sensor capture is **640×480**; the scan path center-crops that frame to **360×360** before decode. If a phone fullscreen high-res unsigned QR has modules that are too dense in a single frame, pixels-per-module inside the crop are insufficient and locating/sampling fails.
 
 2. **Too much info per frame → higher QR version → denser modules**  
    When UR fragment `max_fragment_len` is too large, each frame’s Bytewords grow longer, the static QR version rises, and black/white cells get finer. Phone OLED subpixel layout, reflections, and auto-brightness further worsen edge contrast.
@@ -704,9 +712,13 @@ When integrating with high-density animated URs shown on phone Apps such as OKX 
 
 | Type | On-screen behavior | Meaning |
 | --- | --- | --- |
-| Optical (this section) | Progress stuck, **no dialog**, or never finishes scanning | Single frame too dense / lighting / refresh; reduce fragment size first |
-| Wallet mismatch | Dialog similar to **Wallet mismatch** (same class as `Invalid signer`: the current device wallet does not match the xfp/signer in the request) | Re-import this device’s `crypto-multi-accounts`, or check the path and fingerprint |
-| Encoding field error | Progress can reach **100%** (UR fully collected), then a dialog **Invalid QR Code / invalid data format** (or a “please check input data” style prompt) | CBOR field types are wrong (for example binary encoded as `{type:"Buffer", data:[…]}`); a hot-side encoding issue, not camera density |
+| Optical (this section) | Progress bar stays hidden or never reaches 100%, **no dialog** | Single frame too dense / lighting / refresh; reduce fragment size first |
+| Wallet mismatch | Title **Wallet mismatch** (繁中 **錢包不匹配**). Body **The hardware wallet does not match the wallet selected in the app. Please verify and try again.** (繁中 **硬體錢包與App選取的錢包不匹配，請檢查後再試。**). Solana uses body **Invalid signer used** and title **Invalid QR Code** | Re-import this device’s `crypto-multi-accounts`, or check the path and fingerprint |
+| Unsupported UR | Title **Invalid QR Code** (繁中 **二維碼無效**). Body **Unsupported QR Code type, please try again.** (繁中 **不支持的二維碼類型，請重試。**) | UR type is outside the firmware registry, or the text contains `//`. Emit `ur:<type>/…` with 2 or 3 `/` segments |
+| Collected but not signable | Progress can reach **100%**, then title **Invalid QR Code** / **二維碼無效**, body **Processing failed. Please scan again.** / **處理失敗，請重試掃碼** | CBOR field types are wrong (for example binary encoded as `{type:"Buffer", data:[…]}`) |
+| No signed QR after accept | Title **Invalid QR Code** / **二維碼無效**, body **Failed to generate QR code** / **生成二維碼失敗** | The request was accepted, but the device could not build the signed UR |
+
+The dialog button is **Retry** / **重試**. Firmware then ignores the camera for about **1.5 s** so the same code does not immediately re-fire. The device UI language is English or Traditional Chinese.
 
 #### Hot-Side (Third-Party Wallet) Recommended Practices
 
@@ -716,19 +728,20 @@ When integrating with high-density animated URs shown on phone Apps such as OKX 
 | Error correction | Prefer **M / Q**; when too dense, **reduce fragments first**—do not only raise to H |
 | Layout | QR as large and centered as possible; **avoid large center logos / stickers** covering modules |
 | Screen | Raise brightness; disable dark translucent overlays; reduce strong reflections |
-| Refresh | About **200–500 ms** per frame; same order of magnitude as device-side account export (~250 ms) |
-| Self-test (no debug cable) | On a real device: short ETH → medium PSBT → large PSBT. If progress stays at 0% / the confirmation page never opens, reduce fragment size; if “invalid data” appears after a full scan, check CBOR bytes encoding |
+| Refresh | Unsigned QR (device scans the hot side): about **200–500 ms** per frame, same order as device account export (~250 ms). Signed QR (hot side scans the device): about **1000 ms** per frame; size the scan timeout for that pace |
+| After a device dialog | Leave the unsigned animation on screen. **Retry** resumes scanning after ~**1.5 s** |
+| Self-test (no debug cable) | On a real device: short ETH → medium PSBT → large PSBT. If the progress bar never appears, reduce fragment size. If a dialog appears after 100%, match the body in the table above (unsupported type, processing failed, or failed to generate QR) |
 
 #### Device Side (For Reference)
 
 - Account export animation already commonly uses smaller fragments (~**100** bytes), convenient for **phones scanning hardware**; when the hot side displays for hardware to scan, adopt a symmetric strategy.  
 - Firmware crop resolution is a device capability boundary; third-party integrators **must not assume** hardware can stably recognize exchange-style large codes that are “as few frames / as dense as possible.”  
-- Protocol-parse / wallet-mismatch errors are shown as **on-screen dialogs**. The optical-failure stage does not pop a dialog every frame (to avoid flooding the screen); judge by scan progress and whether the confirmation page is reached.
+- Protocol-parse / wallet-mismatch errors are **on-screen dialogs** (strings in the table above). A frame that fails to decode is dropped quietly; judge the optical stage by whether the progress bar appears and whether the confirmation page opens. The signed-result screen tells the user “Use the app to scan the QR code below.” and advances about once per second.
 
 #### Summary
 
-> **When hardware fails to scan hot-side transaction QRs: progress stuck → first suspect single-frame density; after a full scan, “invalid data” → check hot-side CBOR encoding; “wallet mismatch” → check xfp/account.**  
-> Handling principle for optical issues: **reduce per-frame payload → increase frame count → keep the code surface clear**.
+> **Progress bar never appears → first suspect single-frame density. Dialog after a full scan → match the body: “Processing failed…” is CBOR; “Unsupported QR Code type” is the UR shape or type; “Wallet mismatch” / “Invalid signer used” is xfp or account. “Failed to generate QR code” means the device accepted the request and could not build the signed UR.**  
+> Optical handling: **reduce per-frame payload → increase frame count → keep the code surface clear**. Leave that QR on screen across **Retry**.
 
 ---
 
